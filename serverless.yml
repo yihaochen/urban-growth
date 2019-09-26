@@ -1,0 +1,32 @@
+service: urban-growth
+
+provider:
+  name: aws
+  region: us-west-2
+  runtime: python3.6
+  stage: test
+
+  iamRoleStatements:
+  -  Effect: "Allow"
+     Action:
+       - s3:GetObject
+     Resource:
+       - "arn:aws:s3:::landsat-pds/*"
+  -  Effect: "Allow"
+     Action:
+       - s3:*
+     Resource:
+       - "arn:aws:s3:::urban-growth/*"
+
+package:
+  artifact: package.zip
+
+functions:
+  get-scenes:
+    handler: handler.get_scenes
+    memorySize: 192
+    timeout: 30
+  calc-urban-score:
+    handler: handler.calc_urban_score
+    memorySize: 512
+    timeout: 30
