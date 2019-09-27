@@ -4,13 +4,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import boto3
 from datetime import datetime
-from satsearch import Search
 from tools import *
 
 s3 = boto3.client('s3')
 
 def get_scenes(event, context):
     '''
+    An AWS Lambda function that takes a bbox and returns a list scenes covering
+    the bbox.
     '''
     args = parse_args(event)
 
@@ -21,7 +22,10 @@ def get_scenes(event, context):
         bbox = get_bbox_geojson(geojson)
 
     items = search_scenes(bbox)
-    scene_list = [[item.datetime.ctime(), item.properties['landsat:product_id'], item.properties['eo:cloud_cover']] for item in items]
+    scene_list = [[item.datetime.ctime(),\
+                   item.properties['landsat:product_id'],\
+                   item.properties['eo:cloud_cover']]\
+                  for item in items]
 
     response = prep_response(scene_list)
 
@@ -30,6 +34,8 @@ def get_scenes(event, context):
 
 def calc_urban_score(event, context):
     '''
+    An AWS Lambda function that takes a bbox and returns a list of scenes
+    covering the bbox.
     '''
     args = parse_args(event)
 
@@ -39,8 +45,10 @@ def calc_urban_score(event, context):
     image_swir = get_image(product_id, 'B6', geojson)
     image_nir =  get_image(product_id, 'B5', geojson)
 
+    # Calculate the Normalized Difference Built-up Index
     ndbi = (image_swir-image_nir)/(image_swir+image_nir)
 
+    # Calculate the urban score
     urban_score = np.nan_to_num(ndbi).sum() + np.count_nonzero(image_swir)
 
     date = args['date']
@@ -55,12 +63,3 @@ def calc_urban_score(event, context):
     return response
 
 
-def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
-
-    # Plot figure
-    fig = plt.figure(figsize=(10, 10))
-    plt.imshow(image, vmin=-0.3, vmax=0.0, cmap='PiYG_r', interpolation='nearest')
-    plt.axis('off')
-    plt.savefig('/tmp/tmp.png')
-    response = s3.upload_file('/tmp/tmp.png', bucket_name, fname)
-    print(response)

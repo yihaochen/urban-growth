@@ -4,17 +4,43 @@ import json
 import numpy as np
 import re
 import os
+from satsearch import Search
 from rasterio.mask import mask
 
-def landsat_parse_scene_id(sceneid):
-    '''
-    Author @perrygeo - http://www.perrygeo.com
-
-    parse scene id
+def landsat_parse_product_id(product_id):
     '''
 
-    if not re.match('^(L[COTEM]8\d{6}\d{7}[A-Z]{3}\d{2})|(L[COTEM]08_L\d{1}[A-Z]{2}_\d{6}_\d{8}_\d{8}_\d{2}_(T1|T2|RT))$', sceneid):
-        raise ValueError(f'Could not match {sceneid}')
+    Parse Product ID
+
+    The data are organized using a directory structure based on each scene’s
+    path and row. For instance, the files for Landsat scene
+    LC08_L1TP_139045_20170304_20170316_01_T1 are available in the following
+    location:
+    s3://landsat-pds/c1/L8/139/045/LC08_L1TP_139045_20170304_20170316_01_T1/
+
+    The “c1” refers to Collection 1, the “L8” refers to Landsat 8, “139” refers
+    to the scene’s path, “045” refers to the scene’s row, and the final
+    directory matches the product’s identifier, which uses the following naming
+    convention: LXSS_LLLL_PPPRRR_YYYYMMDD_yyymmdd_CC_TX, in which:
+
+    L = Landsat
+    X = Sensor
+    SS = Satellite
+    PPP = WRS path
+    RRR = WRS row
+    YYYYMMDD = Acquisition date
+    yyyymmdd = Processing date
+    CC = Collection number
+    TX = Collection category
+
+    ---
+
+    Modified from code by @perrygeo - http://www.perrygeo.com
+
+    '''
+
+    if not re.match('^(L[COTEM]8\d{6}\d{7}[A-Z]{3}\d{2})|(L[COTEM]08_L\d{1}[A-Z]{2}_\d{6}_\d{8}_\d{8}_\d{2}_(T1|T2|RT))$', product_id):
+        raise ValueError(f'Could not match {product_id}')
 
     precollection_pattern = (
         r'^L'
@@ -53,13 +79,13 @@ def landsat_parse_scene_id(sceneid):
 
     meta = None
     for pattern in [collection_pattern, precollection_pattern]:
-        match = re.match(pattern, sceneid, re.IGNORECASE)
+        match = re.match(pattern, product_id, re.IGNORECASE)
         if match:
             meta = match.groupdict()
             break
 
     if not meta:
-        raise ValueError(f'Could not match {sceneid}')
+        raise ValueError(f'Could not match {product_id}')
 
     if meta.get('acquisitionJulianDay'):
         date = datetime.datetime(int(meta['acquisitionYear']), 1, 1) \
@@ -77,16 +103,16 @@ def landsat_parse_scene_id(sceneid):
         'L8',
         meta['path'],
         meta['row'],
-        sceneid,
-        sceneid)
+        product_id,
+        product_id)
 
-    meta['scene'] = sceneid
+    meta['product_id'] = product_id
 
     return meta
 
 
-def get_landsat_s3_url(sceneid, band):
-    meta = landsat_parse_scene_id(sceneid)
+def get_landsat_s3_url(product_id, band):
+    meta = landsat_parse_scene_id(product_id)
     meta['band'] = band
     s = 's3://landsat-pds/{key}_{band:2}.TIF'
     url = s.format(**meta)
@@ -94,6 +120,9 @@ def get_landsat_s3_url(sceneid, band):
 
 
 def parse_args(event):
+    '''
+    Parse event from API calls or directly pass the input.
+    '''
     # For API calls, the input arguments are in "body"
     if 'body' in event.keys():
         args = json.loads(event['body'])
@@ -103,7 +132,9 @@ def parse_args(event):
 
 
 def prep_response(output):
-
+    '''
+    Put the output dictionary into the body of an HTTP response.
+    '''
     response =  {
                 'statusCode': 200,
                 'headers': {'Content-Type': 'text/JSON'},
@@ -152,3 +183,14 @@ def get_image(product_id, band, geojson):
     image, transform = mask(src, features, crop=True, indexes=1)
 
     return image.astype(np.int16)
+
+
+def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
+
+    # Plot figure
+    fig = plt.figure(figsize=(10, 10))
+    plt.imshow(image, vmin=-0.3, vmax=0.0, cmap='PiYG_r', interpolation='nearest')
+    plt.axis('off')
+    plt.savefig('/tmp/tmp.png')
+    response = s3.upload_file('/tmp/tmp.png', bucket_name, fname)
+    print(response)
