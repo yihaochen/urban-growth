@@ -2,8 +2,10 @@
 import rasterio
 import json
 import numpy as np
+import matplotlib.pyplot as plt
 import re
 import os
+import boto3
 from satsearch import Search
 from rasterio.mask import mask
 
@@ -112,7 +114,7 @@ def landsat_parse_product_id(product_id):
 
 
 def get_landsat_s3_url(product_id, band):
-    meta = landsat_parse_scene_id(product_id)
+    meta = landsat_parse_product_id(product_id)
     meta['band'] = band
     s = 's3://landsat-pds/{key}_{band:2}.TIF'
     url = s.format(**meta)
@@ -196,10 +198,11 @@ def get_image(product_id, band, geojson):
 
 def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
 
+    s3 = boto3.client('s3')
+
     # Plot figure
     fig = plt.figure(figsize=(10, 10))
     plt.imshow(image, vmin=-0.3, vmax=0.0, cmap='PiYG_r', interpolation='nearest')
     plt.axis('off')
     plt.savefig('/tmp/tmp.png')
     response = s3.upload_file('/tmp/tmp.png', bucket_name, fname)
-    print(response)

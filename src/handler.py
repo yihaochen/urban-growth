@@ -1,12 +1,9 @@
 
 import json
 import numpy as np
-import matplotlib.pyplot as plt
-import boto3
 from datetime import datetime
 from tools import *
 
-s3 = boto3.client('s3')
 
 def get_scenes(event, context):
     '''
