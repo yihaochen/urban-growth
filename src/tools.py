@@ -119,6 +119,15 @@ def get_landsat_s3_url(product_id, band):
     return url
 
 
+def get_landsat_date(product_id):
+    '''
+    Get the acquisition date from the product id using regex.
+    '''
+    pattern = 'L[COTEM]08_L\d{1}[A-Z]{2}_\d{6}_(\d{8})_\d{8}_\d{2}_(T1|T2|RT)$'
+    date = re.match(pattern, product_id).groups()[0]
+    return date
+
+
 def parse_args(event):
     '''
     Parse event from API calls or directly pass the input.

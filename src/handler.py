@@ -51,7 +51,7 @@ def calc_urban_score(event, context):
     # Calculate the urban score
     urban_score = np.nan_to_num(ndbi).sum() + np.count_nonzero(image_swir)
 
-    date = args['date']
+    date = get_landsat_date(product_id)
 
     json_obj = {'urban_score': urban_score, 'date': date}
 
