@@ -23,6 +23,21 @@ AWS: S3, Lambda, API Gateway; Flask
 
 A web interface that allows user to specify a rectangular region and returns historical urban region graph.
 
+### Requierement
+  - AWS Account
+  - awscli
+  - Docker
+  - npm (serverless)
+
+### Create and deploy
+
+```
+make build
+
+npm install -g serverless
+
+sls deploy
+```
 
 ## Stretch Goals
 
