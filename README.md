@@ -23,11 +23,27 @@ AWS: S3, Lambda, API Gateway; Flask
 
 A web interface that allows user to specify a rectangular region and returns historical urban region graph.
 
+## Stretch Goals
+
+1. A web-based map browser that allows user to select a rectangular region in the map
+2. Allow user to select a city, identify the region of the city, and use the region for image selection
+
+## Instructions
+
 ### Requierement
   - AWS Account
   - awscli
   - Docker
   - npm (serverless)
+
+### Fill in AWS credential
+
+```
+cp sample.env .env
+
+vi .env
+```
+Put your AWS access key id and secret access key in `.env`.
 
 ### Create and deploy
 
@@ -39,7 +55,3 @@ npm install -g serverless
 sls deploy
 ```
 
-## Stretch Goals
-
-1. A web-based map browser that allows user to select a rectangular region in the map
-2. Allow user to select a city, identify the region of the city, and use the region for image selection
