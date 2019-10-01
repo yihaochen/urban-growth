@@ -181,10 +181,11 @@ def get_geojson(args):
     Read geojson from S3 or get geojson from the attribute.
     '''
     if 'geojson_s3_key' in args.keys():
-        geojson = read_geojson_s3(args['geojson_s3_key'])
+        return read_geojson_s3(args['geojson_s3_key'])
     elif 'geojson' in args.keys():
-        geojson = (args['geojson'])
-    return geojson
+        return (args['geojson'])
+    else:
+        return args
 
 
 def get_bbox_geojson(geojson):
@@ -239,3 +240,14 @@ def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
     plt.axis('off')
     plt.savefig('/tmp/tmp.png')
     response = s3.upload_file('/tmp/tmp.png', bucket_name, fname)
+
+    return response
+
+def update_db(obj, table_name='urban-development-score'):
+
+    db = boto3.client('dynamodb')
+    response = db.put_item(
+            TableName=table_name,
+            Item=obj)
+
+    return response

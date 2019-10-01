@@ -57,17 +57,22 @@ def calc_urban_score(event, context):
 
         date = get_landsat_date(product_id)
 
-        json_obj = {'query_id': query_id,
-                    'product_id': product_id,
-                    'urban_score': urban_score,
-                    'date': date}
-
-        outputs.append(json_obj)
-
         # Plot the image
-        fname = 'ndbi/%s_%s.png' % (date, query_id)
+        fname = 'ndbi/%s_%s.png' % (query_id, date)
 
-        plot_save_image_s3(ndbi, fname)
+        s3_response = plot_save_image_s3(ndbi, fname)
+
+        # Item to be written to database
+        db_item = {"query_id": {"S": str(query_id)},
+                   "scene_date": {"S": str(date)},
+                   "product_id": {"S": str(product_id)},
+                   "urban_score": {"N": str(urban_score)},
+                   "s3_key": {"S": str(fname)}
+                  }
+
+        outputs.append(db_item)
+
+        db_response = update_db(db_item)
 
     response = prep_response(outputs)
 
