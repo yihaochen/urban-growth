@@ -28,6 +28,7 @@ RUN find $PACKAGE_PREFIX -type f -a -name '*.py' -print0 | xargs -0 rm -f
 
 # Copy source codes 
 COPY src/* $PACKAGE_PREFIX/
+RUN rm -rdf $PACKAGE_PREFIX/test.py
 
 ################################################################################
 #                              CREATE ARCHIVE                                  #
