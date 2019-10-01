@@ -1,4 +1,4 @@
-from handler import get_scenes, calc_urban_score, read_json
+from handler import get_scenes_send_queues, get_scenes, calc_urban_score, read_json
 
 def test_calc_urban_score():
     print('\nTesting calc_urban_score')
@@ -17,7 +17,12 @@ def test_get_scenes():
     print(get_scenes(read_json("seattle-city-limits.geojson"), None))
 
 
+def test_get_scenes_send_queues():
+    print('\nTesting get_scenes_send_queues')
+    print(get_scenes_send_queues({"geojson_s3_key": "geojson/seattle-city-limits.geojson"}, None))
+
 def main():
+    test_get_scenes_send_queues()
     test_calc_urban_score()
     test_get_scenes()
 

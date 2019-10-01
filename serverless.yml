@@ -24,9 +24,13 @@ package:
 functions:
   get-scenes:
     handler: handler.get_scenes
-    memorySize: 192
+    memorySize: 128
     timeout: 30
   calc-urban-score:
     handler: handler.calc_urban_score
     memorySize: 512
+    timeout: 60
+  get-scenes-send-queues:
+    handler: handler.get_scenes_send_queues
+    memorySize: 192
     timeout: 30

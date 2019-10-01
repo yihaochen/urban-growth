@@ -12,11 +12,7 @@ def get_scenes(event, context):
     '''
     args = parse_args(event)
 
-    if 'bbox' in args.keys():
-        bbox = args['bbox']
-    else:
-        geojson = get_geojson(args)
-        bbox = get_bbox_geojson(geojson)
+    bbox = get_bbox(args)
 
     items = search_scenes(bbox)
     scene_list = [[item.datetime.ctime(),\
@@ -46,7 +42,9 @@ def calc_urban_score(event, context):
         product_id = args['product_id']
         geojson = get_geojson(args)
 
+        # Short-wave Infrared - Band 6
         image_swir = get_image(product_id, 'B6', geojson)
+        # Near Infrared - Band 5
         image_nir =  get_image(product_id, 'B5', geojson)
 
         # Calculate the Normalized Difference Built-up Index
@@ -77,3 +75,31 @@ def calc_urban_score(event, context):
     response = prep_response(outputs)
 
     return response
+
+
+def get_scenes_send_queues(event, context):
+    '''
+    '''
+    args = parse_args(event)
+    geojson_s3_key = args['geojson_s3_key']
+    query_id = datetime.now().strftime('%Y%m%d%H%M%S')
+
+    bbox = get_bbox(args)
+    if 'cloud_cover_range' in args.keys():
+        cloud_cover_range = args['cloud_cover_range']
+    else:
+        cloud_cover_range = (0, 5)
+    items = search_scenes(bbox, cloud_cover=cloud_cover_range)
+    print('Found %3i scenes' % len(items))
+
+    responses = []
+
+    for item in items:
+        job = {"query_id": query_id,
+               "product_id": item.properties["landsat:product_id"],
+               "geojson_s3_key": geojson_s3_key
+              }
+        response = send_queue(job)
+        responses.append(response)
+
+    return responses

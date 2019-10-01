@@ -10,6 +10,8 @@ import base64
 from satsearch import Search
 from rasterio.mask import mask
 
+sqs_url = 'https://us-west-2.queue.amazonaws.com/940900654266/landsat-scenes'
+
 def landsat_parse_product_id(product_id):
     '''
 
@@ -137,10 +139,9 @@ def parse_args(event):
     '''
     # For API calls, the input arguments are in "body"
     if 'body' in event.keys():
-        args = json.loads(event['body'])
+        return json.loads(event['body'])
     else:
-        args = event
-    return args
+        return event
 
 def decode_records(event):
 
@@ -201,6 +202,14 @@ def get_bbox_geojson(geojson):
     return bbox
 
 
+def get_bbox(args):
+    if 'bbox' in args.keys():
+        return args['bbox']
+    else:
+        geojson = get_geojson(args)
+        return get_bbox_geojson(geojson)
+
+
 def search_scenes(bbox, collection='landsat-8-l1', cloud_cover=(0,10)):
     search = Search(bbox=bbox,
                     query={'eo:cloud_cover': {'gt': cloud_cover[0],
@@ -249,5 +258,13 @@ def update_db(obj, table_name='urban-development-score'):
     response = db.put_item(
             TableName=table_name,
             Item=obj)
+
+    return response
+
+
+def send_queue(job, queue_url=sqs_url):
+
+    sqs = boto3.client('sqs')
+    response = sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(job))
 
     return response
