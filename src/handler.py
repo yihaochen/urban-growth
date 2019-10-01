@@ -15,7 +15,7 @@ def get_scenes(event, context):
     if 'bbox' in args.keys():
         bbox = args['bbox']
     else:
-        geojson = event
+        geojson = get_geojson(args)
         bbox = get_bbox_geojson(geojson)
 
     items = search_scenes(bbox)
@@ -34,16 +34,17 @@ def calc_urban_score(event, context):
     An AWS Lambda function that takes a scene and a geojson region and return
     the urban score in that region. This function also saves an image to S3.
     '''
+    # Decode from SQS messages
     records = decode_records(event)
 
     outputs = []
     for record in records:
+        # Parse args from body in record
         args = parse_args(record)
+
+        query_id = args['query_id']
         product_id = args['product_id']
-        if 'geojson_s3_key' in args.keys():
-            geojson = read_geojson_s3(args['geojson_s3_key'])
-        elif 'geojson' in args.keys():
-            geojson = (args['geojson'])
+        geojson = get_geojson(args)
 
         image_swir = get_image(product_id, 'B6', geojson)
         image_nir =  get_image(product_id, 'B5', geojson)
@@ -56,17 +57,18 @@ def calc_urban_score(event, context):
 
         date = get_landsat_date(product_id)
 
-        json_obj = {'product_id': product_id,
+        json_obj = {'query_id': query_id,
+                    'product_id': product_id,
                     'urban_score': urban_score,
                     'date': date}
 
         outputs.append(json_obj)
 
-        fname = 'ndbi/%s_%s.png' % (date, datetime.now().strftime('%Y%m%d_%H%M%S'))
+        # Plot the image
+        fname = 'ndbi/%s_%s.png' % (date, query_id)
+
         plot_save_image_s3(ndbi, fname)
 
     response = prep_response(outputs)
 
     return response
-
-

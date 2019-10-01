@@ -176,6 +176,17 @@ def read_json(fname):
         return json.load(f)
 
 
+def get_geojson(args):
+    '''
+    Read geojson from S3 or get geojson from the attribute.
+    '''
+    if 'geojson_s3_key' in args.keys():
+        geojson = read_geojson_s3(args['geojson_s3_key'])
+    elif 'geojson' in args.keys():
+        geojson = (args['geojson'])
+    return geojson
+
+
 def get_bbox_geojson(geojson):
     c1_min, c1_max = 180, -180
     c2_min, c2_max = 90, -90
