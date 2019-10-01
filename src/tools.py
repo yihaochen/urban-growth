@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import re
 import os
 import boto3
+import base64
 from satsearch import Search
 from rasterio.mask import mask
 
@@ -141,6 +142,20 @@ def parse_args(event):
         args = event
     return args
 
+def decode_records(event):
+
+    if 'Records' not in event.keys():
+        return [event]
+
+    # Kinesis stream and SQS contain 'Records' key
+    records = []
+    for record in event['Records']:
+        if 'kinesis' in record.keys():
+            # Kinesis data is base64 encoded so decode here
+            records.append(json.loads(base64.b64decode(record['kinesis']['data'])))
+        else:
+            records.append(record)
+    return records
 
 def prep_response(output):
     '''
@@ -182,6 +197,13 @@ def search_scenes(bbox, collection='landsat-8-l1', cloud_cover=(0,10)):
                           }
                    )
     return search.items()
+
+
+def read_geojson_s3(geojson_key, bucket_name='urban-growth'):
+    s3 = boto3.client('s3')
+    content_dict = s3.get_object(Bucket=bucket_name, Key=geojson_key)
+    file_content = content_dict['Body'].read().decode('utf-8')
+    return json.loads(file_content)
 
 
 def get_image(product_id, band, geojson):
