@@ -14,12 +14,20 @@ RUN pip3 install matplotlib -t $PACKAGE_PREFIX -U
 #                            REDUCE PACKAGE SIZE                               #
 ################################################################################
 RUN find $PACKAGE_PREFIX -name "*-info" -type d -exec rm -rdf {} +
-#RUN rm -rdf $PACKAGE_PREFIX/boto3/ \
-#  && rm -rdf $PACKAGE_PREFIX/botocore/ \
-RUN rm -rdf $PACKAGE_PREFIX/docutils/ \
+RUN rm -rdf $PACKAGE_PREFIX/boto3/ \
+  && rm -rdf $PACKAGE_PREFIX/botocore/ \
+  && rm -rdf $PACKAGE_PREFIX/docutils/ \
   && rm -rdf $PACKAGE_PREFIX/dateutil/ \
+  && rm -rdf $PACKAGE_PREFIX/setuptools/ \
   && rm -rdf $PACKAGE_PREFIX/jmespath/ \
-  && rm -rdf $PACKAGE_PREFIX/numpy/doc/
+  && rm -rdf $PACKAGE_PREFIX/numpy/doc/ \
+  && rm -rdf $PACKAGE_PREFIX/numpy/*/tests/ \
+  && rm -rdf $PACKAGE_PREFIX/matplotlib/mpl-data/fonts/ \
+  && rm -rdf $PACKAGE_PREFIX/matplotlib/mpl-data/sample_data\ \
+  && rm -rdf $PACKAGE_PREFIX/matplotlib/mpl-data/images\ \
+  && rm -rdf $PACKAGE_PREFIX/matplotlib/testing/ \
+  && rm -rdf $PACKAGE_PREFIX/matplotlib/tests/ \
+  && rm -rdf $PACKAGE_PREFIX/mpl_toolkits/tests/
 
 # Leave module precompiles for faster Lambda startup
 RUN find $PACKAGE_PREFIX -type f -name '*.pyc' | while read f; do n=$(echo $f | sed 's/__pycache__\///' | sed 's/.cpython-36//'); cp $f $n; done;
