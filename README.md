@@ -55,3 +55,7 @@ npm install -g serverless
 sls deploy
 ```
 
+---
+### Reference
+
+[simple-rio-lambda](https://github.com/vincentsarago/simple-rio-lambda/)
