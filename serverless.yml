@@ -17,6 +17,24 @@ provider:
        - s3:*
      Resource:
        - "arn:aws:s3:::urban-growth/*"
+  -  Effect: "Allow"
+     Action:
+       - sqs:ReceiveMessage
+       - sqs:SendMessage
+       - sqs:SendMessageBatch
+       - sqs:DeleteMessage
+       - sqs:GetQueueAttributes
+       - logs:CreateLogGroup
+       - logs:CreateLogStream
+       - logs:PutLogEvents
+     Resource:
+       - "arn:aws:sqs:::"
+       - "arn:aws:logs:::"
+  -  Effect: "Allow"
+     Action:
+       - dynamodb:*
+     Resource:
+       - "arn:aws:dynamodb:::table/*"
 
 package:
   artifact: package.zip

@@ -192,12 +192,20 @@ def get_geojson(args):
 def get_bbox_geojson(geojson):
     c1_min, c1_max = 180, -180
     c2_min, c2_max = 90, -90
-    for f in geojson['features']:
-        c = f["geometry"]["coordinates"][0]
-        c1_min = min([x[0] for x in c]+[c1_min]) # first coordinate
-        c1_max = max([x[0] for x in c]+[c1_max])
-        c2_min = min([x[1] for x in c]+[c2_min]) # second coordinate
-        c2_max = max([x[1] for x in c]+[c2_max])
+    for feature in geojson["features"]:
+        # Single Polygon; coordinates[0] is the boundary; coordinates[1:] are holes
+        if feature["geometry"]["type"] == "Polygon":
+            cc = [feature["geometry"]["coordinates"][0]]
+        # MultiPolygon; coordinates are list of polygons
+        else:
+            cc = []
+            for pol in feature["geometry"]["coordinates"][:][0]:
+                cc.append(pol)
+        for c in cc:
+            c1_min = min([x[0] for x in c]+[c1_min]) # first coordinate
+            c1_max = max([x[0] for x in c]+[c1_max])
+            c2_min = min([x[1] for x in c]+[c2_min]) # second coordinate
+            c2_max = max([x[1] for x in c]+[c2_max])
     bbox = [c1_min, c2_min, c1_max, c2_max]
     return bbox
 
@@ -240,20 +248,19 @@ def get_image(product_id, band, geojson):
 
 
 def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
-
     s3 = boto3.client('s3')
 
     # Plot figure
     fig = plt.figure(figsize=(10, 10))
     plt.imshow(image, vmin=-0.3, vmax=0.0, cmap='PiYG_r', interpolation='nearest')
     plt.axis('off')
-    plt.savefig('/tmp/tmp.png')
-    response = s3.upload_file('/tmp/tmp.png', bucket_name, fname)
+    plt.tight_layout()
+    plt.savefig('/tmp/tmp.png', bbox_inches='tight', pad_inches=0)
+    response = s3.upload_file('/tmp/tmp.png', bucket_name, fname, ExtraArgs={'ACL':'public-read'})
 
     return response
 
 def update_db(obj, table_name='urban-development-score'):
-
     db = boto3.client('dynamodb')
     response = db.put_item(
             TableName=table_name,
@@ -263,7 +270,6 @@ def update_db(obj, table_name='urban-development-score'):
 
 
 def send_queue(job, queue_url=sqs_url):
-
     sqs = boto3.client('sqs')
     response = sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(job))
 
