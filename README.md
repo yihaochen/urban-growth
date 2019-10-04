@@ -1,10 +1,16 @@
 ## Project Idea/Business Value
 
-Provide an interface to extract analytics from time-series satellite images. 
+This is an Insight Data Engineering project. The goal is to construct a data
+pipeline to extract analytics from time-series satellite images. I implement
+the pipeline on AWS with the serverless Lambda service.
 
 ## Tech Stack
 
-AWS: S3, Lambda, API Gateway; Flask
+Development and deployment: Docker, serverless
+
+AWS: S3, Lambda, SQS, DynamoDB
+
+Frontend: Dash
 
 ## Data Source
 
@@ -21,12 +27,15 @@ AWS: S3, Lambda, API Gateway; Flask
 
 ## MVP
 
-A web interface that allows user to specify a rectangular region and returns historical urban region graph.
+A web interface that allows user to specify a region and returns historical
+urban region graph.
 
 ## Stretch Goals
 
-1. A web-based map browser that allows user to select a rectangular region in the map
-2. Allow user to select a city, identify the region of the city, and use the region for image selection
+1. A web-based map browser that allows user to select a rectangular region in
+   the map.
+2. Allow user to select a city, identify the region of the city, and use the
+   region for image selection
 
 ## Instructions
 
