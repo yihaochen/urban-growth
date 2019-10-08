@@ -19,7 +19,8 @@ def test_get_scenes():
 
 def test_get_scenes_send_queues():
     print('\nTesting get_scenes_send_queues')
-    print(get_scenes_send_queues({"geojson_s3_key": "geojson/seattle-city-limits.geojson"}, None))
+    print(get_scenes_send_queues({"geojson_s3_key": "geojson/seattle.geojson"}, None))
+
 
 def main():
     test_get_scenes_send_queues()
