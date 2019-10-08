@@ -77,7 +77,7 @@ app.layout = html.Div(children=[
 
 @app.callback(Output("ndbi-image", "src"),
              [Input("dev-score-vs-time", "hoverData")])
-def update_image(hover_data):
+def update_image_src(hover_data):
     if hover_data:
         key = hover_data["points"][0]["customdata"]
         src = "https://{}.s3-us-west-2.amazonaws.com/{}".format(s3_bucket_name,key)
@@ -93,32 +93,9 @@ def update_image(hover_data):
                Input("interval", "n_intervals")],
               [State("city-dropdown", "value")])
 def update_figure(n_clicks, n_intervals, value):
-    print(n_clicks, n_intervals, value)
-    region_query = regions_table.query(KeyConditionExpression=Key("geojson_s3_key").eq(value))
-    # Call the lambda function if the geojson_s3_key is not in the query_info
-    if region_query["ScannedCount"] < 1:
-        func = boto3.client("lambda")
-        payload = {"geojson_s3_key": value,
-                   "cloud_cover_range": (0, 5)}
-        response = func.invoke(FunctionName=lambda_function_name,
-                               Payload=json.dumps(payload))
+    print('[update_figure]', n_clicks, n_intervals, value)
 
-        response = json.loads(response['Payload'].read())
-        print("response:", response)
-        body = json.loads(response['body'])
-        query_id = body['query_id']
-        n_scenes = body['number_of_scenes']
-    else:
-        region_item = region_query["Items"][0]
-        query_id = region_item["query_id"]
-        n_scenes = region_item["number_of_scenes"]
-
-    items = table.query(KeyConditionExpression=Key("query_id").eq(query_id))["Items"]
-
-    print(len(items), n_scenes)
-    interval_disabled = len(items) >= n_scenes
-    counter_text = '# of scenes: %3i/%3i' % (len(items), n_scenes)
-
+    # Basic layout for the figure
     figure={
         'layout': go.Layout(
             xaxis={'type': 'date', 'title': 'Date',
@@ -134,16 +111,44 @@ def update_figure(n_clicks, n_intervals, value):
             xaxis_rangeslider_visible=True
         )
     }
-    if len(items) == 0:
+
+    region_query = regions_table.query(KeyConditionExpression=Key("geojson_s3_key").eq(value))
+    # Call the lambda function if the geojson_s3_key is not in the query_info
+    if region_query["ScannedCount"] < 1:
+        func = boto3.client("lambda")
+        payload = {"geojson_s3_key": value,
+                   "cloud_cover_range": (0, 30)}
+        response = func.invoke(FunctionName=lambda_function_name,
+                               Payload=json.dumps(payload))
+
+        response = json.loads(response['Payload'].read())
+        print("response:", response)
+        body = json.loads(response['body'])
+        query_id = body['query_id']
+        n_scenes = body['number_of_scenes']
+    else:
+        region_item = region_query["Items"][0]
+        query_id = region_item["query_id"]
+        n_scenes = region_item["number_of_scenes"]
+
+    items = table.query(KeyConditionExpression=Key("query_id").eq(query_id))["Items"]
+    df = pd.DataFrame(items)
+
+    n_done = (df['urban_score'] > 0).sum()
+    print(n_done, n_scenes)
+    interval_disabled = n_done >= n_scenes
+    counter_text = '# of scenes: %3i/%3i' % (n_done, n_scenes)
+
+    if n_done == 0:
         return figure, False, counter_text
     else:
-        df = pd.DataFrame(items)
+        df_done = df[df['urban_score'] > 0]
         figure['data'] = [\
             go.Scatter(
-                x=pd.to_datetime(df['scene_date']),
-                y=df['urban_score'],
-                customdata=df['s3_key'],
-                text=df['urban_score'],
+                x=pd.to_datetime(df_done['scene_datetime']),
+                y=df_done['urban_score'],
+                customdata=df_done['s3_key'],
+                text=df_done['urban_score'],
                 mode='markers',
                 opacity=0.7,
                 marker={
@@ -152,7 +157,6 @@ def update_figure(n_clicks, n_intervals, value):
             )
         ]
     return figure, interval_disabled, counter_text
-
 
 
 @app.callback(Output("upload", "style"),

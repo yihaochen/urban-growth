@@ -58,28 +58,30 @@ def calc_urban_score(event, context):
         ndbi = (image_swir-image_nir)/(image_swir+image_nir)
 
         # Calculate the urban score
-        urban_score = np.nan_to_num(ndbi, posinf=0, neginf=0).sum() / np.count_nonzero(image_swir)
+        urban_score = np.nan_to_num(ndbi, posinf=0, neginf=0).sum() / np.count_nonzero(image_swir) + 1.0
         urban_score = np.nan_to_num(urban_score)
 
-        date = get_landsat_date(product_id)
+        date_wrs = get_landsat_date_wrs(product_id)
 
         # Plot the image
-        fname = 'ndbi/%s_%s.png' % (query_id, date)
+        fname = 'ndbi/%s_%s.png' % (query_id, date_wrs)
 
+        key = {"query_id":       {"S": str(query_id)},
+               "scene_date_wrs": {"S": str(date_wrs)}}
+        # Item to be updated in database
+        attr_values = {":urban_score": {"N": str(urban_score)},
+                       ":s3_key":      {"S": str(fname)}
+                      }
+
+        outputs.append(attr_values)
+
+        print('Updating DB:', key, attr_values)
+        db_response = db_update_item(key, attr_values)
+        print(db_response)
+
+        # Save image to S3
         s3_response = plot_save_image_s3(ndbi, fname)
 
-        # Item to be written to database
-        db_item = {"query_id": {"S": str(query_id)},
-                   "scene_date": {"S": str(date)},
-                   "product_id": {"S": str(product_id)},
-                   "urban_score": {"N": str(urban_score)},
-                   "s3_key": {"S": str(fname)}
-                  }
-
-        outputs.append(db_item)
-
-        print('Updating DB:', db_item)
-        db_response = update_db(db_item)
 
     response = prep_response(outputs)
 
@@ -108,19 +110,34 @@ def get_scenes_send_queues(event, context):
 
     for item in items:
         # Send job to SQS
+        product_id = item.properties["landsat:product_id"]
+        date_wrs = get_landsat_date_wrs(product_id)
+        scene_datetime = item.properties["datetime"]
+
         job = {"query_id": query_id,
-               "product_id": item.properties["landsat:product_id"],
+               "product_id": product_id,
                "geojson_s3_key": geojson_s3_key
               }
         print('Sending message to SQS:', job)
         response = send_queue(job)
+
+        # Put a place holder in database
+        db_item = {"query_id":       {"S": str(query_id)},
+                   "scene_date_wrs": {"S": str(date_wrs)},
+                   "scene_datetime": {"S": str(scene_datetime)},
+                   "product_id":     {"S": str(product_id)},
+                   "urban_score":    {"N": str(0)},
+                   "geojson_s3_key": {"S": str(geojson_s3_key)},
+                   "s3_key":         {"S": 'na'}
+                  }
+        db_response = db_put_item(db_item)
 
     # Update the regions table
     db_item = {"geojson_s3_key": {"S": str(geojson_s3_key)},
                "query_id": {"S": str(query_id)},
                "number_of_scenes": {"N": str(len(items))}
               }
-    db_response = update_db(db_item, table_name='regions')
+    db_response = db_put_item(db_item, table_name='regions')
 
     output = {"query_id": query_id,
               "geojson_s3_key": geojson_s3_key,

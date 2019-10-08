@@ -124,13 +124,13 @@ def get_landsat_s3_url(product_id, band):
     return url
 
 
-def get_landsat_date(product_id):
+def get_landsat_date_wrs(product_id):
     '''
-    Get the acquisition date from the product id using regex.
+    Get the acquisition date and wrs from the product id using regex.
     '''
-    pattern = 'L[COTEM]08_L\d{1}[A-Z]{2}_\d{6}_(\d{8})_\d{8}_\d{2}_(T1|T2|RT)$'
-    date = re.match(pattern, product_id).groups()[0]
-    return date
+    pattern = 'L[COTEM]08_L\d{1}[A-Z]{2}_(\d{6})_(\d{8})_\d{8}_\d{2}_(T1|T2|RT)$'
+    wrs, date = re.match(pattern, product_id).groups()[:2]
+    return '%s_%s' % (date, wrs)
 
 
 def parse_args(event):
@@ -260,7 +260,8 @@ def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
 
     return response
 
-def update_db(obj, table_name='urban-development-score'):
+
+def db_put_item(obj, table_name='urban-development-score'):
     db = boto3.client('dynamodb')
     response = db.put_item(
             TableName=table_name,
@@ -268,6 +269,15 @@ def update_db(obj, table_name='urban-development-score'):
 
     return response
 
+
+def db_update_item(key, attr_values, table_name='urban-development-score'):
+    db = boto3.client('dynamodb')
+    response = db.update_item(
+            TableName=table_name,
+            Key=key,
+            UpdateExpression="SET urban_score = :urban_score, s3_key = :s3_key",
+            ExpressionAttributeValues=attr_values
+    )
 
 def decrease_counter(geojson_s3_key, table_name='regions'):
     db = boto3.client('dynamodb')
