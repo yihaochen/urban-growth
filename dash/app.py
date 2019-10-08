@@ -1,17 +1,19 @@
+import pandas as pd
+import json
+import base64
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-import pandas as pd
 import plotly.graph_objs as go
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from dash.dependencies import Input, Output, State
-from scipy import signal
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 table_name = 'urban-development-score'
 s3_bucket_name = 'urban-growth'
+lambda_function_name = 'urban-growth-test-get-scenes-send-queues'
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
@@ -19,6 +21,7 @@ server = app.server
 # Read data from dynamoDB into a pandas DataFrame
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(table_name)
+regions_table = dynamodb.Table('regions')
 
 # Main layout of the page
 app.layout = html.Div(children=[
@@ -28,13 +31,13 @@ app.layout = html.Div(children=[
         dcc.Dropdown(
             id='city-dropdown',
             options=[
-                {'label': 'Seattle', 'value': '20191003174728'},
-                {'label': 'New York', 'value': '20191004211755'},
-                {'label': 'San Francisco', 'value': 'SF'},
-                {'label': 'Mukilteo', 'value': '20191003171955'},
+                {'label': 'Seattle', 'value': 'geojson/seattle.geojson'},
+                {'label': 'New York', 'value': 'geojson/new-york-city.geojson'},
+                {'label': 'San Francisco', 'value': 'geojson/san-francisco.geojson'},
+                {'label': 'Mukilteo', 'value': 'geojson/mukilteo_silver_firs.geojson'},
                 {'label': 'Upload GeoJSON', 'value': 'GEOJSON'}
             ],
-            value='20191003174728'
+            value='geojson/seattle.geojson'
         ),
         # Upload user's own GeoJSON file, default hidden
         dcc.Upload(
@@ -49,6 +52,14 @@ app.layout = html.Div(children=[
         ),
         # Submit button
         html.Button('Submit', id='button'),
+        html.P('# of scenes:', id='scenes-counter', style={'float': 'right'}),
+        # Interval counter
+        dcc.Interval(
+            id='interval',
+            interval=1*1000, # in milliseconds
+            n_intervals=0,
+            disabled=True   # disabled at page load
+        )
     ]),
     html.Hr(),
     dcc.Graph(
@@ -75,26 +86,40 @@ def update_image(hover_data):
         return None
 
 
-@app.callback(Output("dev-score-vs-time", "figure"),
-             [Input("button", "n_clicks")],
-             [State("city-dropdown", "value")])
-def update_figure(n_clicks, value):
-    items = table.query(KeyConditionExpression=Key("query_id").eq(value))['Items']
-    df = pd.DataFrame(items)
+@app.callback([Output("dev-score-vs-time", "figure"),
+               Output("interval", "disabled"),
+               Output("scenes-counter", "children")],
+              [Input("button", "n_clicks"),
+               Input("interval", "n_intervals")],
+              [State("city-dropdown", "value")])
+def update_figure(n_clicks, n_intervals, value):
+    print(n_clicks, n_intervals, value)
+    region_query = regions_table.query(KeyConditionExpression=Key("geojson_s3_key").eq(value))
+    # Call the lambda function if the geojson_s3_key is not in the query_info
+    if region_query["ScannedCount"] < 1:
+        func = boto3.client("lambda")
+        payload = {"geojson_s3_key": value,
+                   "cloud_cover_range": (0, 5)}
+        response = func.invoke(FunctionName=lambda_function_name,
+                               Payload=json.dumps(payload))
+
+        response = json.loads(response['Payload'].read())
+        print("response:", response)
+        body = json.loads(response['body'])
+        query_id = body['query_id']
+        n_scenes = body['number_of_scenes']
+    else:
+        region_item = region_query["Items"][0]
+        query_id = region_item["query_id"]
+        n_scenes = region_item["number_of_scenes"]
+
+    items = table.query(KeyConditionExpression=Key("query_id").eq(query_id))["Items"]
+
+    print(len(items), n_scenes)
+    interval_disabled = len(items) >= n_scenes
+    counter_text = '# of scenes: %3i/%3i' % (len(items), n_scenes)
+
     figure={
-        'data':[
-            go.Scatter(
-                x=pd.to_datetime(df['scene_date']),
-                y=df['urban_score'],
-                customdata=df['s3_key'],
-                text=df['urban_score'],
-                mode='markers',
-                opacity=0.7,
-                marker={
-                    'size': 10,
-                    'line': {'width': 0.5, 'color': 'white'}
-                })]
-        ,
         'layout': go.Layout(
             xaxis={'type': 'date', 'title': 'Date',
                    'showspikes': True,
@@ -109,13 +134,31 @@ def update_figure(n_clicks, value):
             xaxis_rangeslider_visible=True
         )
     }
-    return figure
+    if len(items) == 0:
+        return figure, False, counter_text
+    else:
+        df = pd.DataFrame(items)
+        figure['data'] = [\
+            go.Scatter(
+                x=pd.to_datetime(df['scene_date']),
+                y=df['urban_score'],
+                customdata=df['s3_key'],
+                text=df['urban_score'],
+                mode='markers',
+                opacity=0.7,
+                marker={
+                    'size': 10,
+                    'line': {'width': 0.5, 'color': 'white'}}
+            )
+        ]
+    return figure, interval_disabled, counter_text
+
 
 
 @app.callback(Output("upload", "style"),
              [Input("city-dropdown", "value")],
              [State("upload", "style")])
-def show_upload_section(value, style):
+def toggle_upload_section(value, style):
     if value == 'GEOJSON':
         style={
             'width': '100%',
@@ -136,13 +179,15 @@ def show_upload_section(value, style):
 @app.callback(
     [Output("city-dropdown", "value"), Output("city-dropdown", "options")],
     [Input("upload", "filename"), Input("upload", "contents")],
-    [State("city-dropdown", "options")])
-def update_output(filename, file_content, options):
+    [State("city-dropdown", "value"), State("city-dropdown", "options")])
+def update_dropdown_options(filename, file_content, value, options):
     if filename is None or file_content is None:
-        return None, options
+        return value, options
     s3 = boto3.client("s3")
     s3_key = "geojson/%s" % filename
-    s3.put_object(Body=file_content, Bucket=s3_bucket_name, Key=s3_key)
+    content_type, content_string = file_content.split(',')
+    decoded = base64.b64decode(content_string)
+    s3.put_object(Body=decoded.decode('utf-8'), Bucket=s3_bucket_name, Key=s3_key)
     options.append({"label": s3_key, "value": s3_key})
 
     return s3_key, options
