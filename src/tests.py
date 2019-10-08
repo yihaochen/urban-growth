@@ -3,10 +3,7 @@ from handler import get_scenes_send_queues, get_scenes, calc_urban_score, read_j
 def test_calc_urban_score():
     print('\nTesting calc_urban_score')
     print('\t- Using geojson_s3_key...')
-    print(calc_urban_score({"query_id": 0, "product_id": "LC08_L1TP_047027_20190828_20190903_01_T1", "geojson_s3_key": "geojson/seattle-city-limits.geojson"}, None))
-
-    print('\t- Using geojson...')
-    print(calc_urban_score({"query_id": 0, "product_id": "LC08_L1TP_047027_20190828_20190903_01_T1", "geojson": read_json("seattle-city-limits.geojson")}, None))
+    print(calc_urban_score({"query_id": 0, "product_id": "LC08_L1TP_047027_20190828_20190903_01_T1", "geojson_s3_key": "geojson/seattle.geojson"}, None))
 
 
 def test_get_scenes():
@@ -23,8 +20,8 @@ def test_get_scenes_send_queues():
 
 
 def main():
-    test_get_scenes_send_queues()
     test_calc_urban_score()
+    test_get_scenes_send_queues()
     test_get_scenes()
 
 
