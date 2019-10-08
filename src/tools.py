@@ -186,7 +186,7 @@ def get_geojson(args):
     elif 'geojson' in args.keys():
         return (args['geojson'])
     else:
-        return args
+        raise KeyError("Cannot find 'geojson' or 'geojson_s3_key' in args")
 
 
 def get_bbox_geojson(geojson):
@@ -266,6 +266,22 @@ def update_db(obj, table_name='urban-development-score'):
             TableName=table_name,
             Item=obj)
 
+    return response
+
+
+def decrease_counter(geojson_s3_key, table_name='regions'):
+    db = boto3.client('dynamodb')
+    response = db.update_item(
+            TableName=table_name,
+            Key={
+                'geojson_s3_key': {'S': geojson_s3_key}
+            },
+            UpdateExpression="set number_of_scenes = number_of_scenes - :val",
+            ExpressionAttributeValues={
+                ':val': {'N': '1'}
+            },
+            ReturnValues="UPDATED_NEW"
+    )
     return response
 
 
