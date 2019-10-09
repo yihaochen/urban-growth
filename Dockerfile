@@ -7,7 +7,8 @@ ENV PACKAGE_PREFIX /tmp/python
 
 #RUN pip3 install rasterio --no-binary numpy -t $PACKAGE_PREFIX -U
 RUN pip3 install rasterio -t $PACKAGE_PREFIX -U
-RUN pip3 install sat-search -t $PACKAGE_PREFIX -U
+RUN pip3 install rio-l8qa -t $PACKAGE_PREFIX -U
+RUN pip3 install sat-search==0.2.1 -t $PACKAGE_PREFIX -U
 RUN pip3 install matplotlib -t $PACKAGE_PREFIX -U
 
 ################################################################################

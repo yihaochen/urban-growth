@@ -9,6 +9,7 @@ import boto3
 import base64
 from satsearch import Search
 from rasterio.mask import mask
+from l8qa import qa
 
 sqs_url = 'https://us-west-2.queue.amazonaws.com/940900654266/landsat-scenes'
 
@@ -184,7 +185,7 @@ def get_geojson(args):
     if 'geojson_s3_key' in args.keys():
         return read_geojson_s3(args['geojson_s3_key'])
     elif 'geojson' in args.keys():
-        return (args['geojson'])
+        return (read_json(args['geojson']))
     else:
         raise KeyError("Cannot find 'geojson' or 'geojson_s3_key' in args")
 
@@ -237,14 +238,25 @@ def read_geojson_s3(geojson_key, bucket_name='urban-growth'):
 
 def get_image(product_id, band, geojson):
     s3_url = get_landsat_s3_url(product_id, band)
-    src = rasterio.open(s3_url)
+    qa_url = get_landsat_s3_url(product_id, 'BQA')
 
-    features = [rasterio.warp.transform_geom('EPSG:4326', src.crs, feature["geometry"])
-                for feature in geojson['features']]
+    with rasterio.open(s3_url) as src:
+        features = [rasterio.warp.transform_geom('EPSG:4326',
+            src.crs, feature["geometry"]) for feature in geojson['features']]
 
-    image, transform = mask(src, features, crop=True, indexes=1)
+        image, transform = mask(src, features, crop=True, indexes=1)
 
-    return image.astype(np.int16)
+    with rasterio.open(qa_url) as qa_src:
+        qa_image, transform = mask(qa_src, features, crop=True, indexes=1)
+        cloud_mask = qa.cloud_confidence(qa_image) >= 2
+
+    masked_image = np.ma.masked_array(image, mask=cloud_mask, dtype=np.int16)
+
+    # Raise error if too few unmasked pixels
+    if (masked_image>0).sum() < 10000:
+        raise ValueError
+
+    return masked_image
 
 
 def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
@@ -275,7 +287,7 @@ def db_update_item(key, attr_values, table_name='urban-development-score'):
     response = db.update_item(
             TableName=table_name,
             Key=key,
-            UpdateExpression="SET urban_score = :urban_score, s3_key = :s3_key",
+            UpdateExpression="SET urban_score = :urban_score, n_pixels = :n_pixels, s3_key = :s3_key",
             ExpressionAttributeValues=attr_values
     )
 

@@ -117,7 +117,7 @@ def update_figure(n_clicks, n_intervals, value):
     if region_query["ScannedCount"] < 1:
         func = boto3.client("lambda")
         payload = {"geojson_s3_key": value,
-                   "cloud_cover_range": (0, 30)}
+                   "cloud_cover_range": [0, 30]}
         response = func.invoke(FunctionName=lambda_function_name,
                                Payload=json.dumps(payload))
 
@@ -152,7 +152,7 @@ def update_figure(n_clicks, n_intervals, value):
                 mode='markers',
                 opacity=0.7,
                 marker={
-                    'size': 10,
+                    'size': 8,
                     'line': {'width': 0.5, 'color': 'white'}}
             )
         ]

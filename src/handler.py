@@ -58,7 +58,8 @@ def calc_urban_score(event, context):
         ndbi = (image_swir-image_nir)/(image_swir+image_nir)
 
         # Calculate the urban score
-        urban_score = np.nan_to_num(ndbi, posinf=0, neginf=0).sum() / np.count_nonzero(image_swir) + 1.0
+        n_pixels = (image_swir>0).sum()
+        urban_score = ndbi.sum() / n_pixels + 1.0
         urban_score = np.nan_to_num(urban_score)
 
         date_wrs = get_landsat_date_wrs(product_id)
@@ -70,6 +71,7 @@ def calc_urban_score(event, context):
                "scene_date_wrs": {"S": str(date_wrs)}}
         # Item to be updated in database
         attr_values = {":urban_score": {"N": str(urban_score)},
+                       ":n_pixels":    {"N": str(n_pixels)},
                        ":s3_key":      {"S": str(fname)}
                       }
 
@@ -127,6 +129,7 @@ def get_scenes_send_queues(event, context):
                    "scene_datetime": {"S": str(scene_datetime)},
                    "product_id":     {"S": str(product_id)},
                    "urban_score":    {"N": str(0)},
+                   "n_pixels":       {"N": str(0)},
                    "geojson_s3_key": {"S": str(geojson_s3_key)},
                    "s3_key":         {"S": 'na'}
                   }
@@ -141,6 +144,7 @@ def get_scenes_send_queues(event, context):
 
     output = {"query_id": query_id,
               "geojson_s3_key": geojson_s3_key,
+              "cloud_cover_range": cloud_cover_range,
               "number_of_scenes": len(items)
              }
     response = prep_response(output)
