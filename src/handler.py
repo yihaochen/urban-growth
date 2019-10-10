@@ -50,6 +50,9 @@ def calc_urban_score(event, context):
         key = {"query_id":       {"S": str(query_id)},
                "scene_date_wrs": {"S": str(date_wrs)}}
 
+        # File name of the image
+        fname = 'ndbi/%s_%s.png' % (query_id, date_wrs)
+
         # Items to be updated in database
         attr_values = {":urban_score": {"N": str(urban_score)},
                        ":n_pixels":    {"N": str(n_pixels)},
@@ -61,10 +64,7 @@ def calc_urban_score(event, context):
         db_response = db_update_item(key, attr_values)
         logger.info('DB response: %s', db_response)
 
-        # Plot the image
-        fname = 'ndbi/%s_%s.png' % (query_id, date_wrs)
-
-        # Save image to S3
+        # Plot the image and save to S3
         s3_response = plot_save_image_s3(ndbi, fname)
 
         outputs.append(attr_values)
