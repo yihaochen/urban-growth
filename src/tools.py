@@ -269,7 +269,7 @@ def get_image(product_id, band, geojson):
     masked_image = np.ma.masked_array(image, mask=cloud_mask, dtype=np.int16)
 
     # Raise error if there are less than 50% unmasked pixels
-    if (masked_image>0).sum() < (image>0).sum()/2:
+    if (masked_image>0).sum() < 0.8*(image>0).sum():
         raise ValueError
 
     return masked_image
@@ -309,10 +309,14 @@ def db_update_item(key, attr_values, table_name='urban-development-score'):
     Update the itme in the database.
     '''
     db = boto3.client('dynamodb')
+    update_expression = "SET "+
+                "urban_score = :urban_score, "+
+                "n_pixels = :n_pixels, "+
+                "s3_key = :s3_key"
     response = db.update_item(
             TableName=table_name,
             Key=key,
-            UpdateExpression="SET urban_score = :urban_score, n_pixels = :n_pixels, s3_key = :s3_key",
+            UpdateExpression=update_expression,
             ExpressionAttributeValues=attr_values
     )
 

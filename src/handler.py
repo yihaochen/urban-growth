@@ -97,6 +97,12 @@ def get_scenes_send_queues(event, context):
     items = search_scenes(bbox, cloud_cover=cloud_cover_range)
     logger.info('Found %3i scenes', len(items))
 
+    # Update the regions table
+    db_item = {"geojson_s3_key": {"S": str(geojson_s3_key)},
+               "query_id": {"S": str(query_id)},
+               "number_of_scenes": {"N": str(len(items))}
+              }
+    db_response = db_put_item(db_item, table_name='regions')
     for item in items:
         # Send job to SQS
         product_id = item.properties["landsat:product_id"]
@@ -121,13 +127,6 @@ def get_scenes_send_queues(event, context):
                    "s3_key":         {"S": 'na'}
                   }
         db_response = db_put_item(db_item)
-
-    # Update the regions table
-    db_item = {"geojson_s3_key": {"S": str(geojson_s3_key)},
-               "query_id": {"S": str(query_id)},
-               "number_of_scenes": {"N": str(len(items))}
-              }
-    db_response = db_put_item(db_item, table_name='regions')
 
     output = {"query_id": query_id,
               "geojson_s3_key": geojson_s3_key,
