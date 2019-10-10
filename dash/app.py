@@ -30,6 +30,9 @@ regions_table = dynamodb.Table('regions')
 # A list for indicating the Lambda function is running
 running = []
 
+# A boolean variable to indicate first update of the figure
+first_update = True
+
 # Main layout of the page
 app.layout = html.Div(children=[
     html.H2(id='header', children='Urban Growth'),
@@ -41,6 +44,8 @@ app.layout = html.Div(children=[
                 {'label': 'Seattle', 'value': 'geojson/seattle.geojson'},
                 {'label': 'New York', 'value': 'geojson/new-york-city.geojson'},
                 {'label': 'San Francisco', 'value': 'geojson/san-francisco.geojson'},
+                {'label': 'Chicago', 'value': 'geojson/chicago.geojson'},
+                {'label': 'Madison', 'value': 'geojson/madison.geojson'},
                 {'label': 'Mukilteo', 'value': 'geojson/mukilteo_silver_firs.geojson'},
                 {'label': 'Upload GeoJSON', 'value': 'GEOJSON'}
             ],
@@ -76,7 +81,7 @@ app.layout = html.Div(children=[
     ),
         html.Img(id='ndbi-image',
             className='column',
-            style={'width': 500},
+            style={'width': 'auto', 'max-width': 500, 'height': 'auto', 'max-height': 600},
         )
 ],
 )
@@ -95,16 +100,18 @@ def update_image_src(hover_data, old_src):
         else:
             return old_src
     else:
-        return old_src
+        return ''
 
 
 @app.callback([Output("dev-score-vs-time", "figure"),
                Output("interval", "disabled"),
-               Output("scenes-counter", "children")],
+               Output("scenes-counter", "children"),
+               Output("dev-score-vs-time", "hoverData")],
               [Input("button", "n_clicks"),
                Input("interval", "n_intervals")],
-              [State("city-dropdown", "value")])
-def update_figure(n_clicks, n_intervals, value):
+              [State("city-dropdown", "value"),
+               State("dev-score-vs-time", "hoverData")])
+def update_figure(n_clicks, n_intervals, value, hoverData):
     logger.info('[update_figure] (nclicks, n_intervals, value)', n_clicks, n_intervals, value)
 
     # Basic layout for the figure
@@ -130,10 +137,10 @@ def update_figure(n_clicks, n_intervals, value):
     if region_query["ScannedCount"] < 1:
         if value in running:
             # Lambda is running. Do not invoke again
-            return figure, False, '# of scenes: '
+            return figure, False, '# of scenes: ', hoverData
         func = boto3.client("lambda")
         payload = {"geojson_s3_key": value,
-                   "cloud_cover_range": [0, 50]}
+                   "cloud_cover_range": [0, 90]}
         response = func.invoke(FunctionName=lambda_function_name,
                                Payload=json.dumps(payload),
                                InvocationType='Event')
@@ -141,7 +148,7 @@ def update_figure(n_clicks, n_intervals, value):
 
         logger.info("response: %s", str(response))
 
-        return figure, False, '# of scenes: '
+        return figure, False, '# of scenes: ', None
     else:
         region_item = region_query["Items"][0]
         query_id = region_item["query_id"]
@@ -156,18 +163,28 @@ def update_figure(n_clicks, n_intervals, value):
     counter_text = '# of scenes: %3i/%3i' % (n_done, n_scenes)
 
     if n_done == 0:
-        return figure, False, counter_text
+        return figure, False, counter_text, None
     else:
         df_done = df[df['urban_score'] > 0]
         scene_datetime = pd.to_datetime(df_done['scene_datetime'])
-        #mask = scene_datetime.dt.month.isin([6,7,8])
-        mask = scene_datetime.dt.month > 0
-        figure['data'] = [\
+        mask = scene_datetime.dt.month.isin([6,7,8])
+        figure['data'] = [
+            # Non-summer points
+            go.Scatter(
+                x=scene_datetime[~mask],
+                y=df_done[~mask]['urban_score'],
+                customdata=df_done[~mask]['s3_key'],
+                name='non-summer',
+                mode='markers',
+                opacity=0.6,
+                marker={'size': 8}
+            ),
+            # Summer points
             go.Scatter(
                 x=scene_datetime[mask],
                 y=df_done[mask]['urban_score'],
                 customdata=df_done[mask]['s3_key'],
-                text=df_done[mask]['urban_score'],
+                name='summer',
                 mode='markers',
                 opacity=0.7,
                 marker={
@@ -175,13 +192,23 @@ def update_figure(n_clicks, n_intervals, value):
                     'line': {'width': 0.5, 'color': 'white'}}
             )
         ]
-    return figure, interval_disabled, counter_text
+        global first_update
+        if first_update:
+            hover_update = {"points":
+                    [{"x": scene_datetime[mask].iloc[0],
+                      "customdata":df_done[mask]['s3_key'].iloc[0]}]}
+            first_update = False
+        else:
+            hover_update = hoverData
+    return figure, interval_disabled, counter_text, hover_update
 
 
 @app.callback(Output("upload", "style"),
              [Input("city-dropdown", "value")],
              [State("upload", "style")])
 def toggle_upload_section(value, style):
+    global first_update
+    first_update = True
     if value == 'GEOJSON':
         style={
             'width': '100%',
