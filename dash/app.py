@@ -8,6 +8,10 @@ import plotly.graph_objs as go
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from dash.dependencies import Input, Output, State
+import logging
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -22,6 +26,9 @@ server = app.server
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(table_name)
 regions_table = dynamodb.Table('regions')
+
+# A list for indicating the Lambda function is running
+running = []
 
 # Main layout of the page
 app.layout = html.Div(children=[
@@ -76,14 +83,19 @@ app.layout = html.Div(children=[
 
 
 @app.callback(Output("ndbi-image", "src"),
-             [Input("dev-score-vs-time", "hoverData")])
-def update_image_src(hover_data):
+             [Input("dev-score-vs-time", "hoverData")],
+             [State("ndbi-image", "src")])
+def update_image_src(hover_data, old_src):
     if hover_data:
-        key = hover_data["points"][0]["customdata"]
-        src = "https://{}.s3-us-west-2.amazonaws.com/{}".format(s3_bucket_name,key)
-        return src
+        date = hover_data["points"][0]["x"]
+        if date[5:7] in ['06', '07', '08']:
+            key = hover_data["points"][0]["customdata"]
+            src = "https://{}.s3-us-west-2.amazonaws.com/{}".format(s3_bucket_name,key)
+            return src
+        else:
+            return old_src
     else:
-        return None
+        return old_src
 
 
 @app.callback([Output("dev-score-vs-time", "figure"),
@@ -93,7 +105,7 @@ def update_image_src(hover_data):
                Input("interval", "n_intervals")],
               [State("city-dropdown", "value")])
 def update_figure(n_clicks, n_intervals, value):
-    print('[update_figure]', n_clicks, n_intervals, value)
+    logger.info('[update_figure] (nclicks, n_intervals, value)', n_clicks, n_intervals, value)
 
     # Basic layout for the figure
     figure={
@@ -103,29 +115,33 @@ def update_figure(n_clicks, n_intervals, value):
                    'spikecolor': 'black',
                    'spikemode': 'across+marker',
                    'spikesnap': 'cursor'},
-            yaxis={'title': 'Developement Score'},
-            margin={'l': 100, 'b': 10, 't': 10, 'r': 10},
+            yaxis={'title': 'Developement Score',
+                   'range': [0.8, 1.1]},
+            margin={'l': 50, 'b': 80, 't': 10, 'r': 10},
             legend={'x': 0, 'y': 1},
             hovermode='x',
             spikedistance=-1,
-            xaxis_rangeslider_visible=True
+            #xaxis_rangeslider_visible=True
         )
     }
 
     region_query = regions_table.query(KeyConditionExpression=Key("geojson_s3_key").eq(value))
     # Call the lambda function if the geojson_s3_key is not in the query_info
     if region_query["ScannedCount"] < 1:
+        if value in running:
+            # Lambda is running. Do not invoke again
+            return figure, False, '# of scenes: '
         func = boto3.client("lambda")
         payload = {"geojson_s3_key": value,
-                   "cloud_cover_range": [0, 30]}
+                   "cloud_cover_range": [0, 50]}
         response = func.invoke(FunctionName=lambda_function_name,
-                               Payload=json.dumps(payload))
+                               Payload=json.dumps(payload),
+                               InvocationType='Event')
+        running.append(value)
 
-        response = json.loads(response['Payload'].read())
-        print("response:", response)
-        body = json.loads(response['body'])
-        query_id = body['query_id']
-        n_scenes = body['number_of_scenes']
+        logger.info("response: %s", str(response))
+
+        return figure, False, '# of scenes: '
     else:
         region_item = region_query["Items"][0]
         query_id = region_item["query_id"]
@@ -135,7 +151,7 @@ def update_figure(n_clicks, n_intervals, value):
     df = pd.DataFrame(items)
 
     n_done = (df['urban_score'] > 0).sum()
-    print(n_done, n_scenes)
+    logger.info('# scenes done/all:', n_done, n_scenes)
     interval_disabled = n_done >= n_scenes
     counter_text = '# of scenes: %3i/%3i' % (n_done, n_scenes)
 
@@ -143,12 +159,15 @@ def update_figure(n_clicks, n_intervals, value):
         return figure, False, counter_text
     else:
         df_done = df[df['urban_score'] > 0]
+        scene_datetime = pd.to_datetime(df_done['scene_datetime'])
+        #mask = scene_datetime.dt.month.isin([6,7,8])
+        mask = scene_datetime.dt.month > 0
         figure['data'] = [\
             go.Scatter(
-                x=pd.to_datetime(df_done['scene_datetime']),
-                y=df_done['urban_score'],
-                customdata=df_done['s3_key'],
-                text=df_done['urban_score'],
+                x=scene_datetime[mask],
+                y=df_done[mask]['urban_score'],
+                customdata=df_done[mask]['s3_key'],
+                text=df_done[mask]['urban_score'],
                 mode='markers',
                 opacity=0.7,
                 marker={
