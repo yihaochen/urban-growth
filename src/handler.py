@@ -1,8 +1,11 @@
 
 import json
 import numpy as np
+import logging
 from datetime import datetime
 from tools import *
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 def get_scenes(event, context):
@@ -50,7 +53,7 @@ def calc_urban_score(event, context):
             image_nir =  get_image(product_id, 'B5', geojson)
         except ValueError:
             # mask region does not overlap with raster image
-            print('Encountered error in %s, removing scenes...' % product_id)
+            logger.error('Encountered error in %s, removing scenes...', product_id)
             db_response = decrease_counter(geojson_s3_key)
             return db_response
 
@@ -77,9 +80,9 @@ def calc_urban_score(event, context):
 
         outputs.append(attr_values)
 
-        print('Updating DB:', key, attr_values)
+        logger.info('Updating DB: (%s, %s)', key, attr_values)
         db_response = db_update_item(key, attr_values)
-        print(db_response)
+        logger.info('DB response: %s', db_response)
 
         # Save image to S3
         s3_response = plot_save_image_s3(ndbi, fname)
@@ -108,7 +111,7 @@ def get_scenes_send_queues(event, context):
     else:
         cloud_cover_range = (0, 10)
     items = search_scenes(bbox, cloud_cover=cloud_cover_range)
-    print('Found %3i scenes' % len(items))
+    logger.info('Found %3i scenes', len(items))
 
     for item in items:
         # Send job to SQS
@@ -120,7 +123,7 @@ def get_scenes_send_queues(event, context):
                "product_id": product_id,
                "geojson_s3_key": geojson_s3_key
               }
-        print('Sending message to SQS:', job)
+        logger.info('Sending message to SQS: %s', str(job))
         response = send_queue(job)
 
         # Put a place holder in database
