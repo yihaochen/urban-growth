@@ -40,9 +40,11 @@ def calc_urban_score(event, context):
         # Calculate the Normalized Difference Built-up Index
         ndbi = (image_swir-image_nir)/(image_swir+image_nir)
 
+        valid_pixels = (image_swir>0).sum()
+        total_pixels = (image_swir.data>0).sum()
+
         # Calculate the urban score
-        n_pixels = (image_swir>0).sum()
-        urban_score = ndbi.sum() / n_pixels + 1.0
+        urban_score = ndbi.sum() / valid_pixels + 1.0
         urban_score = np.nan_to_num(urban_score)
 
         date_wrs = get_landsat_date_wrs(product_id)
@@ -54,9 +56,11 @@ def calc_urban_score(event, context):
         fname = 'ndbi/%s_%s.png' % (query_id, date_wrs)
 
         # Items to be updated in database
-        attr_values = {":urban_score": {"N": str(urban_score)},
-                       ":n_pixels":    {"N": str(n_pixels)},
-                       ":s3_key":      {"S": str(fname)}
+        attr_values = {":urban_score":  {"N": str(urban_score)},
+                       ":total_pixels": {"N": str(total_pixels)},
+                       ":valid_pixels": {"N": str(valid_pixels)},
+                       ":valid_percent":{"N": str(valid_pixels/total_pixels)},
+                       ":s3_key":       {"S": str(fname)}
                       }
 
         # Update the database
@@ -102,8 +106,12 @@ def get_scenes_send_queues(event, context):
                "query_id": {"S": str(query_id)},
                "number_of_scenes": {"N": str(len(items))}
               }
+    logger.info('Put item in database: %s', str(db_item))
     db_response = db_put_item(db_item, table_name='regions')
-    for item in items:
+    logger.info('db_response: %s', db_response)
+
+    # Sort the items by cloud_cover so the high quality images are processed first
+    for item in sorted(items, key=lambda item: item.properties['eo:cloud_cover']):
         # Send job to SQS
         product_id = item.properties["landsat:product_id"]
         date_wrs = get_landsat_date_wrs(product_id)
@@ -122,7 +130,9 @@ def get_scenes_send_queues(event, context):
                    "scene_datetime": {"S": str(scene_datetime)},
                    "product_id":     {"S": str(product_id)},
                    "urban_score":    {"N": str(0)},
-                   "n_pixels":       {"N": str(0)},
+                   "total_pixels":   {"N": str(0)},
+                   "valid_pixels":   {"N": str(0)},
+                   "valid_percent":  {"N": str(0)},
                    "geojson_s3_key": {"S": str(geojson_s3_key)},
                    "s3_key":         {"S": 'na'}
                   }

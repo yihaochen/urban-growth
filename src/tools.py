@@ -268,8 +268,8 @@ def get_image(product_id, band, geojson):
 
     masked_image = np.ma.masked_array(image, mask=cloud_mask, dtype=np.int16)
 
-    # Raise error if there are less than 50% unmasked pixels
-    if (masked_image>0).sum() < 0.8*(image>0).sum():
+    # Raise error if there are less than 80% unmasked pixels or 10,000
+    if (masked_image>0).sum() < max(0.8*(image>0).sum(), 10000):
         raise ValueError
 
     return masked_image
@@ -283,7 +283,7 @@ def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
 
     # Plot figure
     fig = plt.figure(figsize=(10, 10))
-    plt.imshow(image, vmin=-0.3, vmax=0.0, cmap='PiYG_r', interpolation='nearest')
+    plt.imshow(image, vmin=-0.2, vmax=0.0, cmap='PiYG_r', interpolation='nearest')
     plt.axis('off')
     plt.tight_layout()
     plt.savefig('/tmp/tmp.png', bbox_inches='tight', pad_inches=0)
@@ -309,10 +309,7 @@ def db_update_item(key, attr_values, table_name='urban-development-score'):
     Update the itme in the database.
     '''
     db = boto3.client('dynamodb')
-    update_expression = "SET "+
-                "urban_score = :urban_score, "+
-                "n_pixels = :n_pixels, "+
-                "s3_key = :s3_key"
+    update_expression = 'SET {}'.format(','.join(f'{k[1:]} = {k}' for k in attr_values))
     response = db.update_item(
             TableName=table_name,
             Key=key,
