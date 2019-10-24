@@ -11,11 +11,8 @@ from satsearch import Search
 from rasterio.mask import mask
 from l8qa import qa
 
-sqs_url = 'https://us-west-2.queue.amazonaws.com/940900654266/landsat-scenes'
-
 def landsat_parse_product_id(product_id):
     '''
-
     Parse Product ID
 
     The data are organized using a directory structure based on each scene’s
@@ -118,6 +115,9 @@ def landsat_parse_product_id(product_id):
 
 
 def get_landsat_s3_url(product_id, band):
+    '''
+    Return the Landsat 8 image URL on S3.
+    '''
     meta = landsat_parse_product_id(product_id)
     meta['band'] = band
     s = 's3://landsat-pds/{key}_{band:2}.TIF'
@@ -144,12 +144,12 @@ def parse_args(event):
     else:
         return event
 
-def decode_records(event):
 
+def decode_records(event):
     if 'Records' not in event.keys():
         return [event]
 
-    # Kinesis stream and SQS contain 'Records' key
+    # SQS message and Kinesis stream contain 'Records' key
     records = []
     for record in event['Records']:
         if 'kinesis' in record.keys():
@@ -158,6 +158,7 @@ def decode_records(event):
         else:
             records.append(record)
     return records
+
 
 def prep_response(output):
     '''
@@ -191,6 +192,12 @@ def get_geojson(args):
 
 
 def get_bbox_geojson(geojson):
+    '''
+    Get the bounding box of the geojson polygons or multipolygons.
+    '''
+    # This function assumes cartesian coordiantes, rather than Mercator
+    # The boundaries of the box might not align with north-south or west-east
+
     c1_min, c1_max = 180, -180
     c2_min, c2_max = 90, -90
     for feature in geojson["features"]:
@@ -230,6 +237,9 @@ def search_scenes(bbox, collection='landsat-8-l1', cloud_cover=(0,10)):
 
 
 def read_geojson_s3(geojson_key, bucket_name='urban-growth'):
+    '''
+    Read the geojson file on s3 using boto3.
+    '''
     s3 = boto3.client('s3')
     content_dict = s3.get_object(Bucket=bucket_name, Key=geojson_key)
     file_content = content_dict['Body'].read().decode('utf-8')
@@ -237,34 +247,43 @@ def read_geojson_s3(geojson_key, bucket_name='urban-growth'):
 
 
 def get_image(product_id, band, geojson):
+    '''
+    Get the cloud masked image (numpy.ma.MaskedArray) of the geojson
+    regions.
+    '''
     s3_url = get_landsat_s3_url(product_id, band)
     qa_url = get_landsat_s3_url(product_id, 'BQA')
 
+    # Image of the requested band
     with rasterio.open(s3_url) as src:
         features = [rasterio.warp.transform_geom('EPSG:4326',
             src.crs, feature["geometry"]) for feature in geojson['features']]
 
         image, transform = mask(src, features, crop=True, indexes=1)
 
+    # Quality control band for cloud mask
     with rasterio.open(qa_url) as qa_src:
         qa_image, transform = mask(qa_src, features, crop=True, indexes=1)
         cloud_mask = qa.cloud_confidence(qa_image) >= 2
 
     masked_image = np.ma.masked_array(image, mask=cloud_mask, dtype=np.int16)
 
-    # Raise error if too few unmasked pixels
-    if (masked_image>0).sum() < 10000:
+    # Raise error if there are less than 80% unmasked pixels or 10,000
+    if (masked_image>0).sum() < max(0.8*(image>0).sum(), 10000):
         raise ValueError
 
     return masked_image
 
 
 def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
+    '''
+    Plot the image and upload the file to S3.
+    '''
     s3 = boto3.client('s3')
 
     # Plot figure
     fig = plt.figure(figsize=(10, 10))
-    plt.imshow(image, vmin=-0.3, vmax=0.0, cmap='PiYG_r', interpolation='nearest')
+    plt.imshow(image, vmin=-0.2, vmax=0.0, cmap='PiYG_r', interpolation='nearest')
     plt.axis('off')
     plt.tight_layout()
     plt.savefig('/tmp/tmp.png', bbox_inches='tight', pad_inches=0)
@@ -274,6 +293,9 @@ def plot_save_image_s3(image, fname, bucket_name='urban-growth'):
 
 
 def db_put_item(obj, table_name='urban-development-score'):
+    '''
+    Put an item in the database.
+    '''
     db = boto3.client('dynamodb')
     response = db.put_item(
             TableName=table_name,
@@ -283,15 +305,23 @@ def db_put_item(obj, table_name='urban-development-score'):
 
 
 def db_update_item(key, attr_values, table_name='urban-development-score'):
+    '''
+    Update the itme in the database.
+    '''
     db = boto3.client('dynamodb')
+    update_expression = 'SET {}'.format(','.join(f'{k[1:]} = {k}' for k in attr_values))
     response = db.update_item(
             TableName=table_name,
             Key=key,
-            UpdateExpression="SET urban_score = :urban_score, n_pixels = :n_pixels, s3_key = :s3_key",
+            UpdateExpression=update_expression,
             ExpressionAttributeValues=attr_values
     )
 
+
 def decrease_counter(geojson_s3_key, table_name='regions'):
+    '''
+    Decrease the number of scenes.
+    '''
     db = boto3.client('dynamodb')
     response = db.update_item(
             TableName=table_name,
@@ -307,7 +337,12 @@ def decrease_counter(geojson_s3_key, table_name='regions'):
     return response
 
 
+sqs_url = 'https://us-west-2.queue.amazonaws.com/940900654266/landsat-scenes'
+
 def send_queue(job, queue_url=sqs_url):
+    '''
+    Send the job to SQS queue.
+    '''
     sqs = boto3.client('sqs')
     response = sqs.send_message(QueueUrl=queue_url, MessageBody=json.dumps(job))
 

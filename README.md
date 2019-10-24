@@ -1,8 +1,9 @@
 ## Project Idea/Business Value
 
-This is an Insight Data Engineering project. The goal is to construct a data
-pipeline to extract analytics from time-series satellite images. I implement
-the pipeline on AWS with the serverless Lambda service.
+This is an Insight Data Engineering project. The objective is to construct a
+data pipeline to extract analytics from time-series satellite images. I
+implement the pipeline on AWS with the serverless Lambda service to get
+flexible performance scaling and cost efficiency.
 
 ## Tech Stack
 
@@ -19,33 +20,27 @@ Frontend: Dash
 
 ## Engineering Challenge
 
-- How to process images in parallel?
+- Lambda has strict source code size limit. How do we include all dependencies
+  of the image processing in the package?
 - If the region spans to more than 1 scenes, how to combine them?
-- How to mask city region in satellite images?
-- How to downsample images when the region is large?
 - How to avoid clouded images and access the quality of each scene?
 
 ## MVP
 
-A web interface that allows user to specify a region and returns historical
-urban region graph.
+A web interface that allows user to specify a region (by a geojson file) and
+returns historical urban region graph.
 
-## Stretch Goals
+## Deployment Instructions
 
-1. A web-based map browser that allows user to select a rectangular region in
-   the map.
-2. Allow user to select a city, identify the region of the city, and use the
-   region for image selection
+### AWS Lambda functions
 
-## Instructions
-
-### Requierement
+#### Requierement
   - AWS Account
   - awscli
   - Docker
   - npm (serverless)
 
-### Fill in AWS credential
+#### Fill in AWS credential
 
 ```
 cp sample.env .env
@@ -54,7 +49,7 @@ vi .env
 ```
 Put your AWS access key id and secret access key in `.env`.
 
-### Create and deploy
+#### Create and deploy
 
 ```
 make build
@@ -64,7 +59,14 @@ npm install -g serverless
 sls deploy
 ```
 
+### Frontend with Dash
+
+#### Set up an EC2 instance and install python3
+
+#### Use nginx and gunicorn for web hosting (optinal)
+
+
 ---
-### Reference
+## Reference
 
 [simple-rio-lambda](https://github.com/vincentsarago/simple-rio-lambda/)

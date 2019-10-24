@@ -8,32 +8,12 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
-def get_scenes(event, context):
-    '''
-    An AWS Lambda function that takes a bbox and returns a list scenes covering
-    the bbox.
-    '''
-    args = parse_args(event)
-
-    bbox = get_bbox(args)
-
-    items = search_scenes(bbox)
-    scene_list = [[item.datetime.ctime(),\
-                   item.properties['landsat:product_id'],\
-                   item.properties['eo:cloud_cover']]\
-                  for item in items]
-
-    response = prep_response(scene_list)
-
-    return response
-
-
 def calc_urban_score(event, context):
     '''
     An AWS Lambda function that takes a scene and a geojson region and return
     the urban score in that region. This function also saves an image to S3.
     '''
-    # Decode from SQS messages
+    # Decode from SQS or Kinesis messages
     records = decode_records(event)
 
     outputs = []
@@ -60,33 +40,38 @@ def calc_urban_score(event, context):
         # Calculate the Normalized Difference Built-up Index
         ndbi = (image_swir-image_nir)/(image_swir+image_nir)
 
+        valid_pixels = (image_swir>0).sum()
+        total_pixels = (image_swir.data>0).sum()
+
         # Calculate the urban score
-        n_pixels = (image_swir>0).sum()
-        urban_score = ndbi.sum() / n_pixels + 1.0
+        urban_score = ndbi.sum() / valid_pixels + 1.0
         urban_score = np.nan_to_num(urban_score)
 
         date_wrs = get_landsat_date_wrs(product_id)
 
-        # Plot the image
-        fname = 'ndbi/%s_%s.png' % (query_id, date_wrs)
-
         key = {"query_id":       {"S": str(query_id)},
                "scene_date_wrs": {"S": str(date_wrs)}}
-        # Item to be updated in database
-        attr_values = {":urban_score": {"N": str(urban_score)},
-                       ":n_pixels":    {"N": str(n_pixels)},
-                       ":s3_key":      {"S": str(fname)}
+
+        # File name of the image
+        fname = 'ndbi/%s_%s.png' % (query_id, date_wrs)
+
+        # Items to be updated in database
+        attr_values = {":urban_score":  {"N": str(urban_score)},
+                       ":total_pixels": {"N": str(total_pixels)},
+                       ":valid_pixels": {"N": str(valid_pixels)},
+                       ":valid_percent":{"N": str(valid_pixels/total_pixels)},
+                       ":s3_key":       {"S": str(fname)}
                       }
 
-        outputs.append(attr_values)
-
+        # Update the database
         logger.info('Updating DB: (%s, %s)', key, attr_values)
         db_response = db_update_item(key, attr_values)
         logger.info('DB response: %s', db_response)
 
-        # Save image to S3
+        # Plot the image and save to S3
         s3_response = plot_save_image_s3(ndbi, fname)
 
+        outputs.append(attr_values)
 
     response = prep_response(outputs)
 
@@ -95,6 +80,9 @@ def calc_urban_score(event, context):
 
 def get_scenes_send_queues(event, context):
     '''
+    An AWS Lambda function that takes a path to the geojson on S3
+    query the landsat 8 scenes containing the regions, and send
+    jobs to SQS for processing.
 
     Input: args or args in the body of event
     args is a dictionary containing
@@ -113,7 +101,17 @@ def get_scenes_send_queues(event, context):
     items = search_scenes(bbox, cloud_cover=cloud_cover_range)
     logger.info('Found %3i scenes', len(items))
 
-    for item in items:
+    # Update the regions table
+    db_item = {"geojson_s3_key": {"S": str(geojson_s3_key)},
+               "query_id": {"S": str(query_id)},
+               "number_of_scenes": {"N": str(len(items))}
+              }
+    logger.info('Put item in database: %s', str(db_item))
+    db_response = db_put_item(db_item, table_name='regions')
+    logger.info('db_response: %s', db_response)
+
+    # Sort the items by cloud_cover so the high quality images are processed first
+    for item in sorted(items, key=lambda item: item.properties['eo:cloud_cover']):
         # Send job to SQS
         product_id = item.properties["landsat:product_id"]
         date_wrs = get_landsat_date_wrs(product_id)
@@ -132,18 +130,13 @@ def get_scenes_send_queues(event, context):
                    "scene_datetime": {"S": str(scene_datetime)},
                    "product_id":     {"S": str(product_id)},
                    "urban_score":    {"N": str(0)},
-                   "n_pixels":       {"N": str(0)},
+                   "total_pixels":   {"N": str(0)},
+                   "valid_pixels":   {"N": str(0)},
+                   "valid_percent":  {"N": str(0)},
                    "geojson_s3_key": {"S": str(geojson_s3_key)},
                    "s3_key":         {"S": 'na'}
                   }
         db_response = db_put_item(db_item)
-
-    # Update the regions table
-    db_item = {"geojson_s3_key": {"S": str(geojson_s3_key)},
-               "query_id": {"S": str(query_id)},
-               "number_of_scenes": {"N": str(len(items))}
-              }
-    db_response = db_put_item(db_item, table_name='regions')
 
     output = {"query_id": query_id,
               "geojson_s3_key": geojson_s3_key,
