@@ -31,7 +31,10 @@ table = dynamodb.Table(table_name)
 regions_table = dynamodb.Table('regions')
 
 # A list for indicating the Lambda function is running
-running = []
+running = ['GEOJSON']
+
+# A list for repeated running
+repeat = ['geojson/enterprise_nw_box.geojson']
 
 # A boolean variable to indicate first update of the figure
 first_update = True
@@ -45,6 +48,7 @@ app.layout = html.Div(children=[
             id='city-dropdown',
             options=[
                 {'label': 'Seattle, WA', 'value': 'geojson/seattle.geojson'},
+                {'label': 'Austin, TX', 'value': 'geojson/austin.geojson'},
                 {'label': 'New York, NY', 'value': 'geojson/new-york-city.geojson'},
                 {'label': 'San Francisco, CA', 'value': 'geojson/san-francisco.geojson'},
                 {'label': 'Chicago, IL', 'value': 'geojson/chicago.geojson'},
@@ -139,7 +143,8 @@ def update_figure(n_clicks, n_intervals, value, hoverData):
         'layout': go.Layout(
             xaxis={'type': 'date', 'title': 'Date',
                    'showspikes': True,
-                   'spikecolor': 'black',
+                   'spikecolor': 'grey',
+                   'spikethickness': 2,
                    'spikemode': 'across+marker',
                    'spikesnap': 'cursor'},
             yaxis={'title': 'Developement Score',
@@ -161,12 +166,13 @@ def update_figure(n_clicks, n_intervals, value, hoverData):
         func = boto3.client("lambda")
         payload = {"geojson_s3_key": value,
                    "cloud_cover_range": [0, 80]}
+        logger.info('Invoking Lambda function...')
         response = func.invoke(FunctionName=lambda_function_name,
                                Payload=json.dumps(payload),
                                InvocationType='Event')
         running.append(value)
 
-        logger.info("response: %s", str(response))
+        logger.info("Response: %s", str(response))
 
         return figure, False, '# of scenes: ', None
     else:
@@ -274,6 +280,9 @@ def update_figure(n_clicks, n_intervals, value, hoverData):
                     [{"x": df_done[mask].index[0],
                       "curveNumber": 4,
                       "customdata": df_done[mask]['s3_key'].iloc[0]}]}
+            if value in running and value in repeat:
+                running.remove(value)
+
             first_update = False
         else:
             hover_update = hoverData
